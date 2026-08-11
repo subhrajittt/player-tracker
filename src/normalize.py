@@ -40,4 +40,4 @@ if __name__ == "__main__":
 
     print(f"\nMissing values check:\n{df.isnull().sum()[df.isnull().sum() > 0]}")
 
-    df.to_csv("data/processed/outfield_normalized.csv", index=False)
+    df.to_csv("data/processed/outfield_normalized.csv", index=False) 
