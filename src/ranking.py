@@ -48,5 +48,5 @@ if __name__ == "__main__":
     print("\n=== Top 10 by xG per 90, Forwards only ===")
     print(get_rankings(df, sort_by='xG_p90', position='FW', top_n=10)[['Player', 'Squad', 'Pos', 'xG_p90']])
 
-    print("\n=== Top 10 by Tackles per 90, Defenders only ===")
+    print("\n=== Top 10 by Tackles per 90, Defenders only ===") 
     print(get_rankings(df, sort_by='Tkl_p90', position='DF', top_n=10)[['Player', 'Squad', 'Pos', 'Tkl_p90']])
