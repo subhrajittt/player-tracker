@@ -11,7 +11,7 @@ DISPLAY_STATS = {
     'Tkl_p90': 'Tackles per 90',
     'Int_p90': 'Interceptions per 90',
     'PrgC_p90': 'Progressive Carries per 90',
-    'PrgP_p90': 'Progressive Passes per 90',
+    'PrgP_p90': 'Progressive Passes per 90', 
 }
 
 
