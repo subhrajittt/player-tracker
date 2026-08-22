@@ -7,6 +7,9 @@ FEATURE_SETS = {
     "goalkeepers": ["Save%", "PSxG+/-", "Stp%", "#OPA/90", "AvgDist", "Launch%", "AvgLen", "CS%"],
 }
 
+RAW_COLS = ["Gls", "Ast", "Min", "MP"]
+RAW_GK_COLS = ["GA", "Saves", "CS", "Min", "MP"]
+
 CLUSTER_LABELS = {
     "attack": {0: "All-Around Forward", 1: "Target Forward", 2: "Elite Dual-Threat Forward", 3: "Squad Forward", 4: "Poacher"},
     "midfield": {0: "Advanced Creator", 1: "Destroyer CDM", 2: "Deep Holding Mid", 3: "Box-to-Box", 4: "Rotation Wide-Mid"},
@@ -20,7 +23,8 @@ def label_and_merge():
     for group in ["attack", "midfield", "defense"]:
         df = pd.read_csv(f"data/processed/clustered_{group}.csv")
         df["Style"] = df["Cluster"].map(CLUSTER_LABELS[group])
-        cols = ["Player", "Squad", "Comp", "PrimaryPos", "SecondaryPos", "Group", "Style"] + FEATURE_SETS[group]
+        cols = ["Player", "Squad", "Comp", "PrimaryPos", "SecondaryPos", "Group", "Style"] + RAW_COLS + FEATURE_SETS[group]
+        cols = [c for c in cols if c in df.columns]
         all_groups.append(df[cols])
 
     gk = pd.read_csv("data/processed/clustered_goalkeepers.csv")
@@ -28,7 +32,8 @@ def label_and_merge():
     gk["Group"] = "goalkeepers"
     gk["PrimaryPos"] = "GK"
     gk["SecondaryPos"] = ""
-    cols = ["Player", "Squad", "Comp", "PrimaryPos", "SecondaryPos", "Group", "Style"] + FEATURE_SETS["goalkeepers"]
+    cols = ["Player", "Squad", "Comp", "PrimaryPos", "SecondaryPos", "Group", "Style"] + RAW_GK_COLS + FEATURE_SETS["goalkeepers"]
+    cols = [c for c in cols if c in gk.columns]
     all_groups.append(gk[cols])
 
     final = pd.concat(all_groups, ignore_index=True)
