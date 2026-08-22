@@ -1,7 +1,10 @@
 import streamlit as st
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
 
 st.set_page_config(page_title="Player Tracker", layout="wide")
+
+SEASON_LABELS = {"2024-25": "Full Player Profile", "2025-26": "Attacking Impact Tracker"}
 
 STAT_LABELS = {
     "Gls_p90": "Goals per 90", "npxG_p90": "Non-Penalty xG per 90", "xAG_p90": "Assist Contribution per 90",
@@ -14,7 +17,7 @@ STAT_LABELS = {
     "Save%": "Save %", "PSxG+/-": "Shot-Stopping vs Expected", "Launch%": "Long Pass %", "#OPA/90": "Sweeping Actions per 90",
     "AvgDist": "Avg Defensive Action Distance", "AvgLen": "Avg Pass Length", "Stp%": "Crosses Stopped %", "CS%": "Clean Sheet %",
     "SoT%": "Shots on Target %", "G/Sh": "Goals per Shot", "Sh_p90": "Shots per 90", "Att Pen_p90": "Box Touches per 90",
-    "PrgR_p90": "Progressive Passes Received per 90",
+    "PrgR_p90": "Progressive Passes Received per 90", "Recov_p90": "Recoveries per 90",
     "xG_p90": "Expected Goals per 90", "xA_p90": "Expected Assists per 90",
     "xGChain_p90": "Buildup Involvement per 90", "xGBuildup_p90": "Deep Buildup Involvement per 90",
     "Ast_p90": "Assists per 90", "npxG_per_Sh": "Shot Quality (xG per Shot)",
@@ -36,14 +39,25 @@ UNDERSTAT_MID_STATS = ["xGChain_p90", "xGBuildup_p90", "Gls_p90", "Ast_p90"]
 UNDERSTAT_GROUP_STATS = {"attack": UNDERSTAT_ATTACK_STATS, "midfield": UNDERSTAT_MID_STATS}
 RAW_COLS_2526 = ["Goals", "Assists", "Minutes", "Games"]
 
+DEFENDER_SCORE_COLS = ["Tkl%", "Int_p90", "Won%", "Clr_p90", "Blocks_p90", "Recov_p90", "Cmp%", "PrgP_p90"]
+MIDFIELDER_SCORE_COLS_2425 = ["PrgP_p90", "KP_p90", "xAG_p90", "SCA90", "Tkl_p90", "Int_p90", "Cmp%"]
+MIDFIELDER_SCORE_COLS_2526 = ["xGChain_p90", "xGBuildup_p90", "xA_p90", "KP_p90", "Gls_p90"]
+GOALKEEPER_SCORE_COLS = ["Save%", "PSxG+/-", "CS%", "Stp%"]
+
 
 @st.cache_data
 def load_data():
-    df_2425 = pd.read_csv("data/processed/player_styles.csv")
-    df_2526 = pd.read_csv("data/processed/understat_player_styles_2025-26.csv")
-    return df_2425, df_2526
+    styles_2425 = pd.read_csv("data/processed/player_styles.csv")
+    styles_2526 = pd.read_csv("data/processed/understat_player_styles_2025-26.csv")
+    defense_raw = pd.read_csv("data/processed/clustered_defense.csv")
+    midfield_raw = pd.read_csv("data/processed/clustered_midfield.csv")
+    attack_raw = pd.read_csv("data/processed/clustered_attack.csv")
+    gk_raw = pd.read_csv("data/processed/clustered_goalkeepers.csv")
+    u_attack_raw = pd.read_csv("data/processed/clustered_understat_attack.csv")
+    u_midfield_raw = pd.read_csv("data/processed/clustered_understat_midfield.csv")
+    return styles_2425, styles_2526, defense_raw, midfield_raw, attack_raw, gk_raw, u_attack_raw, u_midfield_raw
 
-df_2425, df_2526 = load_data()
+df_2425, df_2526, defense_raw, midfield_raw, attack_raw, gk_raw, u_attack_raw, u_midfield_raw = load_data()
 
 
 def show_player_card(row, stat_cols, raw_cols):
@@ -60,12 +74,29 @@ def show_player_card(row, stat_cols, raw_cols):
         st.table(pd.DataFrame(stats_present.items(), columns=["Stat", "Value"]).set_index("Stat"))
 
 
+def composite_leaderboard(df, score_cols, name_col="Player", squad_col="Squad", league=None, top_n=10):
+    valid = df.dropna(subset=score_cols).copy()
+    z = StandardScaler().fit_transform(valid[score_cols])
+    valid["CompositeScore"] = z.mean(axis=1)
+    if league and league != "All":
+        valid = valid[valid["Comp"] == league]
+    top = valid.sort_values("CompositeScore", ascending=False).head(top_n)
+    return top[[name_col, squad_col, "Comp", "CompositeScore"]].round({"CompositeScore": 2})
+
+
+def raw_leaderboard(dfs, stat_col, name_col="Player", squad_col="Squad", league=None, top_n=10):
+    combined = pd.concat([d[[name_col, squad_col, "Comp", stat_col]] for d in dfs], ignore_index=True)
+    if league and league != "All":
+        combined = combined[combined["Comp"] == league]
+    return combined.sort_values(stat_col, ascending=False).head(top_n)
+
+
 st.title("Player Style Tracker")
 
-tab_browse, tab_search, tab_compare = st.tabs(["Browse", "Search", "Compare Seasons"])
+tab_browse, tab_search, tab_compare, tab_leaders = st.tabs(["Browse", "Search", "Compare Seasons", "Leaderboards"])
 
 with tab_browse:
-    season = st.selectbox("Season", ["2024-25", "2025-26"])
+    season = st.selectbox("Season", list(SEASON_LABELS.keys()), format_func=lambda s: f"{SEASON_LABELS[s]} ({s})")
     df = df_2425 if season == "2024-25" else df_2526
     stat_map = GROUP_STATS if season == "2024-25" else UNDERSTAT_GROUP_STATS
     raw_cols = RAW_COLS_2425 if season == "2024-25" else RAW_COLS_2526
@@ -102,8 +133,8 @@ with tab_search:
     query = st.text_input("Search player name")
     if query:
         for label, df_s, stat_map, raw_cols in [
-            ("2024-25", df_2425, GROUP_STATS, RAW_COLS_2425),
-            ("2025-26", df_2526, UNDERSTAT_GROUP_STATS, RAW_COLS_2526),
+            ("Full Player Profile (2024-25)", df_2425, GROUP_STATS, RAW_COLS_2425),
+            ("Attacking Impact Tracker (2025-26)", df_2526, UNDERSTAT_GROUP_STATS, RAW_COLS_2526),
         ]:
             hits = df_s[df_s["Player"].str.contains(query, case=False, na=False)]
             st.subheader(label)
@@ -128,6 +159,8 @@ with tab_search:
                 st.divider()
 
 with tab_compare:
+    st.caption("Note: the two seasons use different data sources and different depth of analysis — "
+               "a style change shown here may reflect a different measurement method, not necessarily a real change in the player.")
     all_names = sorted(set(df_2425["Player"]).union(set(df_2526["Player"])))
     player = st.selectbox("Player", all_names)
 
@@ -136,7 +169,7 @@ with tab_compare:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("2024-25")
+        st.subheader(SEASON_LABELS["2024-25"] + " (2024-25)")
         if len(row_2425):
             r = row_2425.iloc[0]
             st.metric("Style", r["Style"])
@@ -145,7 +178,7 @@ with tab_compare:
         else:
             st.write("Not in this season's dataset")
     with col2:
-        st.subheader("2025-26")
+        st.subheader(SEASON_LABELS["2025-26"] + " (2025-26)")
         if len(row_2526):
             r = row_2526.iloc[0]
             st.metric("Style", r["Style"])
@@ -153,3 +186,36 @@ with tab_compare:
             show_player_card(r, UNDERSTAT_GROUP_STATS.get(r["Group"], []), RAW_COLS_2526)
         else:
             st.write("Not in this season's dataset")
+
+with tab_leaders:
+    lb_season = st.selectbox("Season", list(SEASON_LABELS.keys()), format_func=lambda s: f"{SEASON_LABELS[s]} ({s})", key="lb_season")
+    lb_league = st.selectbox("League", ["All"] + sorted(df_2425["Comp"].unique().tolist() if lb_season == "2024-25" else df_2526["Comp"].unique().tolist()), key="lb_league")
+
+    if lb_season == "2024-25":
+        st.subheader("Top Scorer")
+        st.dataframe(raw_leaderboard([attack_raw, midfield_raw, defense_raw], "Gls", league=lb_league).rename(columns={"Gls": "Goals"}), use_container_width=True, hide_index=True)
+
+        st.subheader("Top Assister")
+        st.dataframe(raw_leaderboard([attack_raw, midfield_raw, defense_raw], "Ast", league=lb_league).rename(columns={"Ast": "Assists"}), use_container_width=True, hide_index=True)
+
+        st.subheader("Best Defender")
+        st.dataframe(composite_leaderboard(defense_raw, DEFENDER_SCORE_COLS, league=lb_league), use_container_width=True, hide_index=True)
+
+        st.subheader("Best Midfielder")
+        st.dataframe(composite_leaderboard(midfield_raw, MIDFIELDER_SCORE_COLS_2425, league=lb_league), use_container_width=True, hide_index=True)
+
+        st.subheader("Best Goalkeeper")
+        st.dataframe(composite_leaderboard(gk_raw, GOALKEEPER_SCORE_COLS, league=lb_league), use_container_width=True, hide_index=True)
+
+    else:
+        u_attack = u_attack_raw.rename(columns={"player_name": "Player", "team_title": "Squad"})
+        u_midfield = u_midfield_raw.rename(columns={"player_name": "Player", "team_title": "Squad"})
+
+        st.subheader("Top Scorer")
+        st.dataframe(raw_leaderboard([u_attack, u_midfield], "goals", league=lb_league).rename(columns={"goals": "Goals"}), use_container_width=True, hide_index=True)
+
+        st.subheader("Top Assister")
+        st.dataframe(raw_leaderboard([u_attack, u_midfield], "assists", league=lb_league).rename(columns={"assists": "Assists"}), use_container_width=True, hide_index=True)
+
+        st.subheader("Best Midfielder")
+        st.dataframe(composite_leaderboard(u_midfield, MIDFIELDER_SCORE_COLS_2526, league=lb_league), use_container_width=True, hide_index=True)
